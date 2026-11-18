@@ -1,0 +1,190 @@
+// prisma/schema.prisma
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                    String                   @id @default(uuid())
+  fullName              String                   @map("full_name")
+  email                 String                   @unique
+  phoneNumber           String                   @map("phone_number")
+  passwordHash          String                   @map("password_hash")
+  role                  String                   @default("USER") // "USER" or "ADMIN"
+  avatarUrl             String?                  @map("avatar_url")
+  createdAt             DateTime                 @default(now()) @map("created_at")
+  updatedAt             DateTime                 @updatedAt @map("updated_at")
+
+  vehicles              Vehicle[]
+  notifications         Notification[]
+  notificationPreference NotificationPreference?
+  passwordResetTokens   PasswordResetToken[]
+  logs                  NotificationDeliveryLog[]
+
+  @@map("users")
+}
+
+model NotificationPreference {
+  id               String   @id @default(uuid())
+  userId           String   @unique @map("user_id")
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailEnabled     Boolean  @default(true) @map("email_enabled")
+  smsEnabled       Boolean  @default(false) @map("sms_enabled")
+  whatsappEnabled  Boolean  @default(false) @map("whatsapp_enabled")
+  inAppEnabled     Boolean  @default(true) @map("in_app_enabled")
+  reminderDays     String   @default("15,7,3,1,0") @map("reminder_days")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("notification_preferences")
+}
+
+model Vehicle {
+  id                 String             @id @default(uuid())
+  userId             String             @map("user_id")
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  registrationNumber String             @map("registration_number")
+  vehicleType        String             @map("vehicle_type")
+  brand              String
+  model              String
+  manufacturingYear  Int                @map("manufacturing_year")
+  registeredProvince String             @map("registered_province")
+  ownerName          String             @map("owner_name")
+  imageUrl           String?            @map("image_url")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  documents          VehicleDocument[]
+
+  @@unique([userId, registrationNumber])
+  @@index([userId])
+  @@map("vehicles")
+}
+
+model DocumentType {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  name        String
+  category    String           // REVENUE_LICENSE, INSURANCE, EMISSION_TEST, FITNESS_CERTIFICATE, PASSENGER_SERVICE_PERMIT, CUSTOM
+  description String?
+  isDefault   Boolean          @default(true) @map("is_default")
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  documents   VehicleDocument[]
+
+  @@map("document_types")
+}
+
+model VehicleDocument {
+  id                 String                   @id @default(uuid())
+  vehicleId          String                   @map("vehicle_id")
+  vehicle            Vehicle                  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  documentTypeId     String                   @map("document_type_id")
+  documentType       DocumentType             @relation(fields: [documentTypeId], references: [id])
+  customTypeName     String?                  @map("custom_type_name")
+  documentNumber     String?                  @map("document_number")
+  serviceProvider    String?                  @map("service_provider")
+  policyOrType       String?                  @map("policy_or_type")
+  issueDate          DateTime?                @map("issue_date")
+  expiryDate         DateTime                 @map("expiry_date")
+  fileAttachmentUrl  String?                  @map("file_attachment_url")
+  originalFileName   String?                  @map("original_file_name")
+  renewalStatus      String                   @default("ACTIVE") @map("renewal_status") // ACTIVE, RENEWED, EXPIRED, CANCELLED
+  notes              String?
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+
+  renewalHistory     DocumentRenewalHistory[]
+  notifications      Notification[]
+  deliveryLogs       NotificationDeliveryLog[]
+
+  @@index([vehicleId])
+  @@index([expiryDate])
+  @@index([renewalStatus])
+  @@map("vehicle_documents")
+}
+
+model DocumentRenewalHistory {
+  id                 String           @id @default(uuid())
+  documentId         String           @map("document_id")
+  document           VehicleDocument  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  previousExpiryDate DateTime         @map("previous_expiry_date")
+  newExpiryDate      DateTime         @map("new_expiry_date")
+  renewedAt          DateTime         @default(now()) @map("renewed_at")
+  renewalCost        Float?           @map("renewal_cost")
+  referenceNumber    String?          @map("reference_number")
+  remarks            String?
+
+  @@index([documentId])
+  @@map("document_renewal_history")
+}
+
+model Notification {
+  id             String              @id @default(uuid())
+  userId         String              @map("user_id")
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentId     String?             @map("document_id")
+  document       VehicleDocument?    @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  title          String
+  message        String
+  daysRemaining  Int                 @map("days_remaining")
+  channel        String              @default("IN_APP") @map("channel") // IN_APP, EMAIL, SMS, WHATSAPP
+  isRead         Boolean             @default(false) @map("is_read")
+  createdAt      DateTime            @default(now()) @map("created_at")
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model NotificationDeliveryLog {
+  id             String              @id @default(uuid())
+  userId         String              @map("user_id")
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentId     String              @map("document_id")
+  document       VehicleDocument     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  channel        String              // IN_APP, EMAIL, SMS, WHATSAPP
+  daysRemaining  Int                 @map("days_remaining")
+  targetExpiry   DateTime            @map("target_expiry")
+  recipient      String
+  status         String              @default("SENT") // PENDING, SENT, FAILED
+  errorMessage   String?             @map("error_message")
+  retryCount     Int                 @default(0) @map("retry_count")
+  sentAt         DateTime            @default(now()) @map("sent_at")
+
+  @@unique([documentId, channel, daysRemaining, targetExpiry])
+  @@index([documentId])
+  @@index([userId])
+  @@index([status])
+  @@map("notification_delivery_logs")
+}
+
+model ScheduledJobRun {
+  id             String    @id @default(uuid())
+  jobName        String    @map("job_name")
+  executionDate  DateTime  @default(now()) @map("execution_date")
+  status         String    // SUCCESS, FAILED, RUNNING
+  scannedCount   Int       @default(0) @map("scanned_count")
+  remindersSent  Int       @default(0) @map("reminders_sent")
+  failuresCount  Int       @default(0) @map("failures_count")
+  details        String?
+  durationMs     Int       @default(0) @map("duration_ms")
+
+  @@index([jobName, executionDate])
+  @@map("scheduled_job_runs")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([token])
+  @@map("password_reset_tokens")
+}

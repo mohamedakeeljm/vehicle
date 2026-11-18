@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">VehicleGuard LK</string>
+    <string name="title_activity_main">VehicleGuard LK</string>
+    <string name="package_name">lk.vehicleguard.app</string>
+    <string name="custom_url_scheme">lk.vehicleguard.app</string>
+</resources>
